@@ -1,67 +1,50 @@
-import csv
 import fitz  # PyMuPDF
-import re
 
-def roman_to_int(roman):
-    roman_numerals = {
-        'i': 1, 'ii': 2, 'iii': 3, 'iv': 4, 'v': 5,
-        'vi': 6, 'vii': 7, 'viii': 8, 'ix': 9, 'x': 10,
-        'xi': 11, 'xii': 12, 'xiii': 13, 'xiv': 14, 'xv': 15,
-        'xvi': 16, 'xvii': 17, 'xviii': 18, 'xix': 19, 'xx': 20,
-        # Extend as needed
-    }
-    return roman_numerals.get(roman.lower())
-
-# This function handles Roman and Arabic numbers
-def parse_page_number(page_str, offset=0):
-    page_str = page_str.strip()
-    if page_str.isdigit():
-        # Return the adjusted page number for Arabic numerals
-        return int(page_str) - 1 + offset
-    else:
-        # Handle Roman numerals
-        page_num = roman_to_int(page_str)
-        if page_num is not None:
-            return page_num - 1 + offset
-        raise ValueError(f"Page '{page_str}' not recognized.")
-
-# Add bookmarks to the PDF
-def add_bookmarks(pdf_path, toc_path, output_path, offset=0):
-    # Read the table of contents from the CSV file
-    with open(toc_path, newline='', encoding='utf-8') as csvfile:
-        toc_reader = csv.DictReader(csvfile)
-        toc_entries = list(toc_reader)
-
+def extract_highlights_and_text(pdf_path, start_page, end_page):
     # Open the PDF file
     doc = fitz.open(pdf_path)
 
-    # Build the Table of Contents (ToC) list
-    toc = []
-    for entry in toc_entries:
-        title = entry['Title'].strip()
-        page_str = entry['Page']
-        level = int(entry.get('Level', 1))
+    results = []  # Store highlights and text here
 
-        try:
-            page_number = parse_page_number(page_str, offset)
-        except ValueError as e:
-            print(e)
-            continue
+    # Loop through specified page range
+    for page_num in range(start_page - 1, end_page):  # Page numbers are zero-indexed in PyMuPDF
+        page = doc.load_page(page_num)
+        page_text = page.get_text("text")  # Extract page text to confirm page access
 
-        toc.append([level, title, page_number])
+        # Print some page text for verification
+        print(f"--- Page {page_num + 1} Text ---")
+        print(page_text[:500])  # Print first 500 characters of text to verify the correct page
 
-    # Set the ToC in the PDF
-    doc.set_toc(toc)
+        highlights = []
+        annot = page.first_annot
+        while annot:
+            # Check if annotation is a highlight
+            if annot.type[0] == 8:
+                highlight = annot.info.get("content", "No content found")  # Safely extract highlight content
+                highlights.append(highlight)
+            annot = annot.next
+        
+        # Store results for this page
+        results.append({
+            "page": page_num + 1,
+            "text": page_text[:500],  # Store first 500 characters of page text
+            "highlights": highlights
+        })
 
-    # Save the updated PDF
-    doc.save(output_path)
-    print(f"Bookmarks added successfully to {output_path}")
+    return results
 
-if __name__ == "__main__":
-    pdf_path = 'input.pdf'        # Path to your input PDF
-    toc_path = 'readings.csv'          # Path to the table of contents CSV
-    output_path = 'output.pdf'    # Path to the output PDF with bookmarks
+# Path to the PDF file
+pdf_file = "conlaw.pdf"
 
-    offset = 21  # Since Page 1 in the TOC is Page 21 in the PDF, set offset to 20
-    
-    add_bookmarks(pdf_path, toc_path, output_path, offset)
+# Pages 576 to 579
+start_page = 576
+end_page = 579
+
+# Extract and print the highlights and text for debugging
+results = extract_highlights_and_text(pdf_file, start_page, end_page)
+
+# Output the results for verification
+for result in results:
+    print(f"\nPage {result['page']} Summary:")
+    print(f"Text (first 500 chars): {result['text']}")
+    print(f"Highlights: {result['highlights']}")
